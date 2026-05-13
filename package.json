@@ -8,7 +8,10 @@
         "dev": "vite",
         "format": "prettier --write resources/",
         "format:check": "prettier --check resources/",
-        "lint": "eslint . --fix"
+        "lint": "eslint . --fix",
+        "firebase:emulators": "firebase emulators:start",
+        "firebase:deploy": "firebase deploy --only firestore,storage,hosting",
+        "firebase:functions": "firebase deploy --only functions"
     },
     "devDependencies": {
         "@eslint/js": "^9.19.0",

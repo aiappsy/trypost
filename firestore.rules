@@ -2,17 +2,101 @@ rules_version='2'
 
 service cloud.firestore {
   match /databases/{database}/documents {
+    // Helper function to check if user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    // Helper function to check if user owns the document
+    function isOwner(userId) {
+      return request.auth.uid == userId;
+    }
+    
+    // Helper function to check workspace membership
+    function isWorkspaceMember(workspaceId) {
+      let workspace = get(/databases/$(database)/documents/workspaces/$(workspaceId)).data;
+      return workspace.owner_id == request.auth.uid 
+             || (workspace.members != null && request.auth.uid in workspace.members);
+    }
+    
+    // Accounts collection - users can only access their own account
+    match /accounts/{accountId} {
+      allow read, write: if isAuthenticated() && isOwner(request.auth.uid);
+      
+      // Subcollections
+      match /{subPath=**} {
+        allow read, write: if isAuthenticated() && resource.data.account_id == request.auth.uid;
+      }
+    }
+    
+    // Workspaces collection - isolated per account/workspace
+    match /workspaces/{workspaceId} {
+      allow read: if isAuthenticated() && isWorkspaceMember(workspaceId);
+      allow create: if isAuthenticated();
+      allow update, delete: if isAuthenticated() && isWorkspaceMember(workspaceId);
+      
+      // Subcollections (posts, signatures, labels, etc.)
+      match /posts/{postId} {
+        allow read: if isAuthenticated() && isWorkspaceMember(workspaceId);
+        allow create, update, delete: if isAuthenticated() && isWorkspaceMember(workspaceId);
+      }
+      
+      match /signatures/{signatureId} {
+        allow read, write: if isAuthenticated() && isWorkspaceMember(workspaceId);
+      }
+      
+      match /labels/{labelId} {
+        allow read, write: if isAuthenticated() && isWorkspaceMember(workspaceId);
+      }
+      
+      match /social_accounts/{socialAccountId} {
+        allow read, write: if isAuthenticated() && isWorkspaceMember(workspaceId);
+      }
+    }
+    
+    // Users collection - users can read/update their own profile
+    match /users/{userId} {
+      allow read: if isAuthenticated() && (request.auth.uid == userId);
+      allow write: if isAuthenticated() && (request.auth.uid == userId);
+    }
+    
+    // Notifications - users can only access their own
+    match /notifications/{notificationId} {
+      allow read, write: if isAuthenticated() && resource.data.user_id == request.auth.uid;
+    }
+    
+    // Media library - workspace-scoped
+    match /media/{mediaId} {
+      allow read: if isAuthenticated();
+      allow create, update, delete: if isAuthenticated();
+    }
+    
+    // AI usage logs - account-scoped
+    match /ai_usage_logs/{logId} {
+      allow read, write: if isAuthenticated();
+    }
+    
+    // Invites - account owners can manage
+    match /invites/{inviteId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update, delete: if isAuthenticated();
+    }
+    
+    // Plans - read-only access
+    match /plans/{planId} {
+      allow read: if true;
+      allow write: if false;
+    }
+    
+    // Subscriptions - users can access their own
+    match /subscriptions/{subscriptionId} {
+      allow read, write: if isAuthenticated() && resource.data.account_id == request.auth.uid;
+    }
+    
+    // Default deny all other paths
     match /{document=**} {
-      // This rule allows anyone with your database reference to view, edit,
-      // and delete all data in your database. It is useful for getting
-      // started, but it is configured to expire after 30 days because it
-      // leaves your app open to attackers. At that time, all client
-      // requests to your database will be denied.
-      //
-      // Make sure to write security rules for your app before that time, or
-      // else all client requests to your database will be denied until you
-      // update your rules.
-      allow read, write: if request.time < timestamp.date(2026, 6, 7);
+      allow read, write: if false;
     }
   }
 }
