@@ -1,0 +1,46 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Helper function to check if user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    // Helper function to check workspace membership
+    function isWorkspaceMember(workspaceId) {
+      let workspace = firestore.get(/databases/(default)/documents/workspaces/$(workspaceId)).data;
+      return workspace.owner_id == request.auth.uid 
+             || (workspace.members != null && request.auth.uid in workspace.members);
+    }
+    
+    // User avatars - users can only upload their own
+    match /avatars/{userId}/{allPaths=**} {
+      allow read: if true;
+      allow write: if isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    // Workspace logos - workspace members can upload
+    match /logos/{workspaceId}/{allPaths=**} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && isWorkspaceMember(workspaceId);
+    }
+    
+    // Post media - workspace-scoped
+    match /posts/{workspaceId}/{mediaId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && isWorkspaceMember(workspaceId);
+    }
+    
+    // General media library - workspace-scoped
+    match /media/{workspaceId}/{allPaths=**} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update, delete: if isAuthenticated();
+    }
+    
+    // Default deny all other paths
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}
